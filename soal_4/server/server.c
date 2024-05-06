@@ -211,7 +211,7 @@ int main(int argc, char const *argv[]) {
                 sscanf(buffer, "hari %[^\n]", hari);
 
                 memset(buffer, 0, sizeof(buffer));
-                readCSV("myanimelist.csv", buffer);
+                readCSV("../myanimelist.csv", buffer);
                 char *token = strtok(buffer, "\n");
                 while (token != NULL) {
                     if (strncmp(token, hari, strlen(hari)) == 0) {
@@ -223,7 +223,7 @@ int main(int argc, char const *argv[]) {
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strcmp(buffer, "status ongoing") == 0) {
                 memset(buffer, 0, sizeof(buffer));
-                readCSV("myanimelist.csv", buffer);
+                readCSV("../myanimelist.csv", buffer);
                 char *token = strtok(buffer, "\n");
                 while (token != NULL) {
                     if (strstr(token, "ongoing") != NULL) {
@@ -236,19 +236,19 @@ int main(int argc, char const *argv[]) {
             } else if (strncmp(buffer, "add", 3) == 0) {
                 char anime[100];
                 sscanf(buffer, "add %[^\n]", anime);
-                addAnime("myanimelist.csv", anime);
+                addAnime("../myanimelist.csv", anime);
                 strcpy(buffer, "anime berhasil ditambahkan.");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strncmp(buffer, "edit", 4) == 0) {
                 char oldAnime[100], newAnime[100];
                 sscanf(buffer, "edit %[^,],%[^\n]", oldAnime, newAnime);
-                editAnime("myanimelist.csv", oldAnime, newAnime);
+                editAnime("../myanimelist.csv", oldAnime, newAnime);
                 strcpy(buffer, "anime berhasil diedit");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strncmp(buffer, "delete", 6) == 0) {
                 char anime[100];
                 sscanf(buffer, "delete %[^\n]", anime);
-                deleteAnime("myanimelist.csv", anime);
+                deleteAnime("../myanimelist.csv", anime);
                 strcpy(buffer, "anime berhasil dihapus");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else {
