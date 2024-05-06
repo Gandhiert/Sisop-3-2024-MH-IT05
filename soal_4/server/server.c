@@ -5,12 +5,11 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <curl/curl.h>
 
 #define PORT 8080
 
 void writeLog(const char *type, const char *message) {
-    FILE *fp = fopen("../change.log", "a");
+    FILE *fp = fopen("change.log", "a");
     if (fp == NULL) {
         printf("Error opening log file\n");
         return;
@@ -26,7 +25,10 @@ void writeLog(const char *type, const char *message) {
 }
 
 void readCSV(const char *filename, char *buffer) {
-    FILE *fp = fopen(filename, "r");
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
     if (fp == NULL) {
         strcpy(buffer, "File not found");
         return;
@@ -41,7 +43,10 @@ void readCSV(const char *filename, char *buffer) {
 }
 
 void addAnime(const char *filename, const char *anime) {
-    FILE *fp = fopen(filename, "a");
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "a");
     if (fp == NULL) {
         printf("Error opening file\n");
         return;
@@ -56,12 +61,15 @@ void addAnime(const char *filename, const char *anime) {
 }
 
 void editAnime(const char *filename, const char *oldAnime, const char *newAnime) {
-    FILE *fp = fopen(filename, "r");
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
     if (fp == NULL) {
         printf("Error opening file\n");
         return;
     }
-
+    
     FILE *tempFp = fopen("temp.csv", "w");
     if (tempFp == NULL) {
         printf("Error opening temporary file\n");
@@ -81,8 +89,8 @@ void editAnime(const char *filename, const char *oldAnime, const char *newAnime)
     fclose(fp);
     fclose(tempFp);
 
-    remove(filename);
-    rename("temp.csv", filename);
+    remove(filePath);
+    rename("temp.csv", filePath);
 
     char message[200];
     snprintf(message, sizeof(message), "%s diubah menjadi %s.", oldAnime, newAnime);
@@ -90,12 +98,15 @@ void editAnime(const char *filename, const char *oldAnime, const char *newAnime)
 }
 
 void deleteAnime(const char *filename, const char *anime) {
-    FILE *fp = fopen(filename, "r");
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
     if (fp == NULL) {
         printf("Error opening file\n");
         return;
     }
-
+    
     FILE *tempFp = fopen("temp.csv", "w");
     if (tempFp == NULL) {
         printf("Error opening temporary file\n");
@@ -113,34 +124,12 @@ void deleteAnime(const char *filename, const char *anime) {
     fclose(fp);
     fclose(tempFp);
 
-    remove(filename);
-    rename("temp.csv", filename);
+   remove(filePath);
+    rename("temp.csv", filePath);
 
     char message[100];
     snprintf(message, sizeof(message), "%s berhasil dihapus.", anime);
     writeLog("DEL", message);
-}
-
-size_t write_data(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    size_t written = fwrite(ptr, size, nmemb, stream);
-    return written;
-}
-
-void downloadCSV(const char *url, const char *filename) {
-    CURL *curl;
-    FILE *fp;
-    CURLcode res;
-
-    curl = curl_easy_init();
-    if (curl) {
-        fp = fopen(filename, "wb");
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-        res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-        fclose(fp);
-    }
 }
 
 int main(int argc, char const *argv[]) {
@@ -176,11 +165,6 @@ int main(int argc, char const *argv[]) {
         perror("listen");
         exit(EXIT_FAILURE);
     }
-
-    // Mengunduh file CSV dari link Google Drive ke direktori utama soal_4
-    const char *url = "https://drive.google.com/uc?id=10p_kzuOgaFY3WT6FVPJIXFbkej2s9f50&export=download";
-    const char *filename = "../myanimelist.csv";
-    downloadCSV(url, filename);
 
     while (1) {
         printf("Waiting for incoming connections...\n");
@@ -227,7 +211,7 @@ int main(int argc, char const *argv[]) {
                 sscanf(buffer, "hari %[^\n]", hari);
 
                 memset(buffer, 0, sizeof(buffer));
-                readCSV("../myanimelist.csv", buffer);
+                readCSV("myanimelist.csv", buffer);
                 char *token = strtok(buffer, "\n");
                 while (token != NULL) {
                     if (strncmp(token, hari, strlen(hari)) == 0) {
@@ -239,7 +223,7 @@ int main(int argc, char const *argv[]) {
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strcmp(buffer, "status ongoing") == 0) {
                 memset(buffer, 0, sizeof(buffer));
-                readCSV("../myanimelist.csv", buffer);
+                readCSV("myanimelist.csv", buffer);
                 char *token = strtok(buffer, "\n");
                 while (token != NULL) {
                     if (strstr(token, "ongoing") != NULL) {
@@ -252,19 +236,19 @@ int main(int argc, char const *argv[]) {
             } else if (strncmp(buffer, "add", 3) == 0) {
                 char anime[100];
                 sscanf(buffer, "add %[^\n]", anime);
-                addAnime("../myanimelist.csv", anime);
+                addAnime("myanimelist.csv", anime);
                 strcpy(buffer, "anime berhasil ditambahkan.");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strncmp(buffer, "edit", 4) == 0) {
                 char oldAnime[100], newAnime[100];
                 sscanf(buffer, "edit %[^,],%[^\n]", oldAnime, newAnime);
-                editAnime("../myanimelist.csv", oldAnime, newAnime);
+                editAnime("myanimelist.csv", oldAnime, newAnime);
                 strcpy(buffer, "anime berhasil diedit");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else if (strncmp(buffer, "delete", 6) == 0) {
                 char anime[100];
                 sscanf(buffer, "delete %[^\n]", anime);
-                deleteAnime("../myanimelist.csv", anime);
+                deleteAnime("myanimelist.csv", anime);
                 strcpy(buffer, "anime berhasil dihapus");
                 send(new_socket, buffer, strlen(buffer), 0);
             } else {
@@ -277,4 +261,4 @@ int main(int argc, char const *argv[]) {
     }
 
     return 0;
-}
+} 
