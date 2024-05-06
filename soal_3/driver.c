@@ -47,7 +47,7 @@ int main(int argc, char const* argv[]) {
     }
 
     char message[MAX_BUFFER];
-    snprintf(message, sizeof(message), "%s %s", command, info);
+    snprintf(message, sizeof(message), "%.*s %.*s", (int)(sizeof(message) - 2), command, (int)(sizeof(message) - strlen(command) - 2), info);
 
     send(sock, message, strlen(message), 0);
     printf("Command sent: %s\n", message);
