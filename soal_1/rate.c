@@ -4,78 +4,78 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
-#define MAX_PLACES 100
-#define SHM_KEY_FILE "/Users/rrrreins/sisop/mod3-soal1/shm_key.txt"
-
-// Struktur untuk data tempat sampah atau area parkir
-typedef struct {
-    char name[50];
-    float rating;
-} PlaceInfo;
-
-key_t get_shm_key() {
-    FILE *key_file = fopen(SHM_KEY_FILE, "r");
-    if (key_file == NULL) {
-        perror("Error opening key file");
-        exit(EXIT_FAILURE);
-    }
-
-    key_t key;
-    fscanf(key_file, "%x", &key);
-    fclose(key_file);
-    return key;
-}
-
-void print_highest_rated(PlaceInfo places[], int num_places, const char *filename) {
-    if (num_places == 0) {
-        printf("No places found in %s\n", filename);
-        return;
-    }
-
-    // Cari tempat dengan rating tertinggi
-    PlaceInfo highest_rated = places[0];
-    for (int i = 1; i < num_places; i++) {
-        if (places[i].rating > highest_rated.rating) {
-            highest_rated = places[i];
-        }
-    }
-
-    // Tampilkan hasil
-    printf("Rating tertinggi di %s:\n", filename);
-    printf("--------------------------------------------------\n");
-    printf("Nama: %s\n", highest_rated.name);
-    printf("Rating: %.1f\n", highest_rated.rating);
-    printf("--------------------------------------------------\n");
-}
+#define MAX_FILENAME_LENGTH 1024
 
 int main() {
-    // Kunci yang diperoleh dari file
-    key_t key = get_shm_key();
+    int baseKey = 12345678; // Base key for shared memory segments
     int shmid;
-    PlaceInfo *shared_places;
+    char *shared_memory;
 
-    // Mengakses shared memory
-    if ((shmid = shmget(key, MAX_PLACES * sizeof(PlaceInfo), 0666)) < 0) {
-        perror("shmget");
-        return 1;
-    }
+    // Iterate through each shared memory segment
+    for (int i = 0; ; i++) {
+        int key = baseKey + i; // Calculate key for this segment
+        shmid = shmget(key, MAX_FILENAME_LENGTH, 0666);
+        if (shmid == -1) {
+            break;
+        }
+        shared_memory = shmat(shmid, NULL, 0);
+        if (shared_memory == (char *) -1) {
+            perror("shmat");
+            exit(1);
+        }
 
-    // Me-attach shared memory
-    if ((shared_places = (PlaceInfo *) shmat(shmid, NULL, 0)) == (PlaceInfo *) -1) {
-        perror("shmat");
-        return 1;
-    }
+        // Read filename from shared memory
+        char *filename = shared_memory;
+        const char *type;
+        if (strstr(filename, "trashcan.csv")) {
+            type = "Trashcan";
+        } else {
+            type = "Parking lot";
+        }
 
-    // Hitung jumlah tempat yang ada di shared memory
-    int num_places = shmid / sizeof(PlaceInfo);
+        // Construct full file path
+        char fullpath[MAX_FILENAME_LENGTH];
+        snprintf(fullpath, sizeof(fullpath), "/Users/rrrreins/sisop/mod3-so1/new-data/%s", filename);
 
-    // Tampilkan hasil untuk semua file
-    print_highest_rated(shared_places, num_places, "All Files");
+        // Open file
+        FILE *file = fopen(fullpath, "r");
+        if (!file) {
+            fprintf(stderr, "Error: Could not open file: %s\n", fullpath);
+            perror("fopen");
+            exit(1);
+        }
 
-    // Me-detach shared memory
-    if (shmdt(shared_places) == -1) {
-        perror("shmdt");
-        return 1;
+        char line[MAX_FILENAME_LENGTH];
+        float maxRating = 0.0;
+        char bestName[MAX_FILENAME_LENGTH] = {0};
+
+        // Read and process the file
+        while (fgets(line, sizeof(line), file)) {
+            char *name = strtok(line, ",");
+            char *rating_str = strtok(NULL, ",");
+            float rating = atof(rating_str);
+
+            if (rating > maxRating) {
+                maxRating = rating;
+                strcpy(bestName, name);
+            }
+        }
+
+        fclose(file);
+
+        // Print the results
+        printf("Type: %s\n", type);
+        printf("Filename: %s\n", filename);
+        printf("------------\n");
+        if (maxRating > 0.0) {
+            printf("Name: %s\n", bestName);
+            printf("Rating: %.1f\n\n", maxRating);
+        } else {
+            printf("No data available.\n\n");
+        }
+
+        // Detach shared memory
+        shmdt(shared_memory);
     }
 
     return 0;
