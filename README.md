@@ -350,3 +350,427 @@ Semua fungsi tersebut akan dijalankan di fungsi utama ini.
 - Pertama, program mengakses shared memory yang sama dengan menggunakan kunci yang telah ditentukan sebelumnya. Kemudian, program menghubungkan shared memory tersebut ke ruang alamat proses.
 - Lalu, program mendapatkan jalur direktori saat ini dan membuat folder "database" jika belum ada. Setelah itu, program menyalin file dari shared memory ke folder "database", kemudian menentukan jenis file berdasarkan nama dan mencatat informasi file ke dalam file log.
 - Sehingga akhirnya, program menghapus file asli dari folder "new-data" setelah menyalinnya. Setelah semua operasi selesai, program melepaskan shared memory dan mengakhiri eksekusi.
+
+## _Soal 2_
+
+### Dikerjakan oleh Fikri Aulia A (5027231026)
+
+Di soal no.2, diminta untuk membuat sebuah kalkulator yang dapat mengerjakan operasi sesuai request dari user, dengan ketentuan sebagai berikut:
+
+- Sesuai request dari adiknya Max ingin nama programnya dudududu.c. Sebelum program parent process dan child process, ada input dari user berupa 2 string. Contoh input: tiga tujuh. 
+
+
+- Pada parent process, program akan mengubah input menjadi angka dan melakukan perkalian dari angka yang telah diubah. Contoh: tiga tujuh menjadi 21. 
+Pada child process, program akan mengubah hasil angka yang telah diperoleh dari parent process menjadi kalimat. Contoh: `21` menjadi “dua puluh satu”.
+
+
+- Max ingin membuat program kalkulator dapat melakukan penjumlahan, pengurangan, dan pembagian, maka pada program buatlah argumen untuk menjalankan program : 
+perkalian	: ./kalkulator -kali
+penjumlahan	: ./kalkulator -tambah
+pengurangan	: ./kalkulator -kurang
+pembagian	: ./kalkulator -bagi
+Beberapa hari kemudian karena Max terpaksa keluar dari Australian Grand Prix 2024 membuat Max tidak bersemangat untuk melanjutkan programnya sehingga kalkulator yang dibuatnya cuma menampilkan hasil positif jika bernilai negatif maka program akan print “ERROR” serta cuma menampilkan bilangan bulat jika ada bilangan desimal maka dibulatkan ke bawah.
+
+
+- Setelah diberi semangat, Max pun melanjutkan programnya dia ingin (pada child process) kalimat akan di print dengan contoh format : 
+perkalian	: “hasil perkalian tiga dan tujuh adalah dua puluh satu.”
+penjumlahan	: “hasil penjumlahan tiga dan tujuh adalah sepuluh.”
+pengurangan	: “hasil pengurangan tujuh dan tiga adalah empat.”
+pembagian	: “hasil pembagian tujuh dan tiga adalah dua.”
+
+
+- Max ingin hasil dari setiap perhitungan dicatat dalam sebuah log yang diberi nama histori.log. Pada parent process, lakukan pembuatan file log berdasarkan data yang dikirim dari child process. 
+Format: [date] [type] [message]
+Type: KALI, TAMBAH, KURANG, BAGI
+
+Ex:
+[10/03/24 00:29:47] [KALI] tujuh kali enam sama dengan empat puluh dua.
+[10/03/24 00:30:00] [TAMBAH] sembilan tambah sepuluh sama dengan sembilan belas.
+[10/03/24 00:30:12] [KURANG] ERROR pada pengurangan.
+
+### Penyelesaian
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <math.h>
+#include <fcntl.h>
+#include <time.h>
+#include <ctype.h>
+
+#define MAX_LENGTH 20
+
+void convertToNumber(char *str, int *num) {
+    if (strcmp(str, "nol") == 0) {
+        *num = 0;
+    } else if (strcmp(str, "satu") == 0) {
+        *num = 1;
+    } else if (strcmp(str, "dua") == 0) {
+        *num = 2;
+    } else if (strcmp(str, "tiga") == 0) {
+        *num = 3;
+    } else if (strcmp(str, "empat") == 0) {
+        *num = 4;
+    } else if (strcmp(str, "lima") == 0) {
+        *num = 5;
+    } else if (strcmp(str, "enam") == 0) {
+        *num = 6;
+    } else if (strcmp(str, "tujuh") == 0) {
+        *num = 7;
+    } else if (strcmp(str, "delapan") == 0) {
+        *num = 8;
+    } else if (strcmp(str, "sembilan") == 0) {
+        *num = 9;
+    }
+}
+
+void convertToWords(int num, char *str) {
+    char *ones[] = {"nol", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan"};
+    char *teens[] = {"sepuluh", "sebelas", "dua belas", "tiga belas", "empat belas", "lima belas", "enam belas", "tujuh belas", "delapan belas", "sembilan belas"};
+    char *tens[] = {"", "sepuluh", "dua puluh", "tiga puluh", "empat puluh", "lima puluh", "enam puluh", "tujuh puluh", "delapan puluh", "sembilan puluh"};
+
+    if (num >= 0 && num <= 9) {
+        strcpy(str, ones[num]);
+    } else if (num >= 10 && num <= 19) {
+        strcpy(str, teens[num - 10]);
+    } else if (num >= 20 && num <= 99) {
+        strcpy(str, tens[num / 10]);
+        if (num % 10 != 0) {
+            strcat(str, " ");
+            strcat(str, ones[num % 10]);
+        }
+    }
+}
+
+void writeToLog(char *type, char *input1, char *input2, char *operation, char *result) {
+    time_t now;
+    struct tm *local;
+    char timestamp[20];
+    FILE *logFile;
+
+    time(&now);
+    local = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%y/%m/%d %H:%M:%S", local);
+
+    logFile = fopen("histori.log", "a");
+    if (logFile == NULL) {
+        perror("Failed to open histori.log");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; type[i] != '\0'; i++) {
+        type[i] = toupper(type[i]);
+    }
+
+    if (strcmp(result, "ERROR") == 0) {
+        fprintf(logFile, "\n [%s] [%s] %s pada pengurangan", timestamp, type, result);
+    }
+    else {
+        fprintf(logFile, "\n [%s] [%s] %s %s %s sama dengan %s", timestamp, type, input1, operation, input2, result);
+    }
+
+    fclose(logFile);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <operation>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    char *operation = argv[1];
+    int pipefd[2];
+    pid_t pid;
+    char input2[MAX_LENGTH], input1[MAX_LENGTH];
+
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0) { 
+        close(pipefd[1]); 
+
+        int result;
+        read(pipefd[0], &result, sizeof(result));
+        close(pipefd[0]);
+
+    } else {
+        close(pipefd[0]); 
+
+        char input1[MAX_LENGTH], input2[MAX_LENGTH];
+        int num1, num2, result;
+
+        printf("Masukkan dua angka (dalam kata): ");
+        scanf("%s %s", input1, input2);
+
+        convertToNumber(input1, &num1);
+        convertToNumber(input2, &num2);
+
+        if (strcmp(operation, "-kali") == 0) {
+            result = num1 * num2;
+        } else if (strcmp(operation, "-tambah") == 0) {
+            result = num1 + num2;
+        } else if (strcmp(operation, "-kurang") == 0) {
+            result = num1 - num2;
+            if (result < 0) {
+                result = -1;
+            }
+        } else if (strcmp(operation, "-bagi") == 0) {
+            if (num2 == 0) {
+                fprintf(stderr, "Error: Pembagian dengan nol tidak diperbolehkan.\n");
+                exit(EXIT_FAILURE);
+            }
+            result = num1 / num2;
+        } else {
+            fprintf(stderr, "Operasi tidak valid.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        char message[MAX_LENGTH];
+        switch (result) {
+            case -1:
+                strcpy(message, "ERROR");
+                break;
+            default:
+                convertToWords(result, message);
+        }
+
+        printf("Hasil %s adalah %s.\n", operation, message);
+        writeToLog(operation, input1, input2, operation, message);
+        exit(EXIT_SUCCESS);
+
+        write(pipefd[1], &result, sizeof(result));
+        close(pipefd[1]);
+
+        wait(NULL);
+    }
+
+    return 0;
+}
+```
+#### - Header dan Definisi Konstanta
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <string.h>
+#include <math.h>
+#include <fcntl.h>
+#include <time.h>
+#include <ctype.h>
+
+#define MAX_LENGTH 20
+```
+
+Header files digunakan untuk mengakses fungsi-fungsi standar yang diperlukan dalam program:
+stdio.h: Untuk fungsi input-output standar seperti printf dan scanf.
+stdlib.h: Untuk fungsi-fungsi umum seperti exit.
+unistd.h, sys/types.h, sys/wait.h: Untuk fungsi-fungsi sistem seperti fork, pipe, wait.
+
+Konstanta MAX_LENGTH ditetapkan sebagai panjang maksimum string yang digunakan untuk representasi kata-kata bilangan. Ini membantu dalam alokasi memori dan pembatasan panjang input yang dapat diterima.
+
+#### - Fungsi-fungsi untuk menjalankan operasi aritmetika sesuai permintaan soal.
+
+```c
+void convertToNumber(char *str, int *num) {
+    if (strcmp(str, "nol") == 0) {
+        *num = 0;
+    } else if (strcmp(str, "satu") == 0) {
+        *num = 1;
+    } else if (strcmp(str, "dua") == 0) {
+        *num = 2;
+    } else if (strcmp(str, "tiga") == 0) {
+        *num = 3;
+    } else if (strcmp(str, "empat") == 0) {
+        *num = 4;
+    } else if (strcmp(str, "lima") == 0) {
+        *num = 5;
+    } else if (strcmp(str, "enam") == 0) {
+        *num = 6;
+    } else if (strcmp(str, "tujuh") == 0) {
+        *num = 7;
+    } else if (strcmp(str, "delapan") == 0) {
+        *num = 8;
+    } else if (strcmp(str, "sembilan") == 0) {
+        *num = 9;
+    }
+}
+```
+
+>Fungsi untuk mengubah kata-kata menjadi angka.
+
+```c
+void convertToWords(int num, char *str) {
+    char *ones[] = {"nol", "satu", "dua", "tiga", "empat", "lima", "enam", "tujuh", "delapan", "sembilan"};
+    char *teens[] = {"sepuluh", "sebelas", "dua belas", "tiga belas", "empat belas", "lima belas", "enam belas", "tujuh belas", "delapan belas", "sembilan belas"};
+    char *tens[] = {"", "sepuluh", "dua puluh", "tiga puluh", "empat puluh", "lima puluh", "enam puluh", "tujuh puluh", "delapan puluh", "sembilan puluh"};
+
+    if (num >= 0 && num <= 9) {
+        strcpy(str, ones[num]);
+    } else if (num >= 10 && num <= 19) {
+        strcpy(str, teens[num - 10]);
+    } else if (num >= 20 && num <= 99) {
+        strcpy(str, tens[num / 10]);
+        if (num % 10 != 0) {
+            strcat(str, " ");
+            strcat(str, ones[num % 10]);
+        }
+    }
+}
+```
+
+>Fungsi untuk mengubah lagi dari kata-kata menjadi angka.
+
+```c
+void writeToLog(char *type, char *input1, char *input2, char *operation, char *result) {
+    time_t now;
+    struct tm *local;
+    char timestamp[20];
+    FILE *logFile;
+
+    time(&now);
+    local = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%y/%m/%d %H:%M:%S", local);
+
+    logFile = fopen("histori.log", "a");
+    if (logFile == NULL) {
+        perror("Failed to open histori.log");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; type[i] != '\0'; i++) {
+        type[i] = toupper(type[i]);
+    }
+
+    if (strcmp(result, "ERROR") == 0) {
+        fprintf(logFile, "\n [%s] [%s] %s pada pengurangan", timestamp, type, result);
+    }
+    else {
+        fprintf(logFile, "\n [%s] [%s] %s %s %s sama dengan %s", timestamp, type, input1, operation, input2, result);
+    }
+
+    fclose(logFile);
+}
+```
+
+>Fungsi untuk menuliskan hasil operasi ke dalam file "histori.log" dengan format yang sudah ditentukan.
+
+#### - Fungsi main.
+
+```c
+if (argc != 2) {
+        fprintf(stderr, "Usage: %s <operation>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+```
+
+>Fungsi main dimulai dengan memeriksa jumlah argumen yang diberikan saat menjalankan program. Program ini diharapkan menerima dua argumen: nama program itu sendiri (argv[0]) dan operasi matematika yang akan dilakukan. Jika jumlah argumen tidak sesuai, program akan menampilkan pesan kesalahan dan keluar dengan status kesalahan.
+
+```c
+int pipefd[2];
+if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+```
+
+>Selanjutnya, program membuat sebuah pipe dengan menggunakan fungsi pipe(). Pipe ini akan digunakan untuk komunikasi antara proses induk dan proses anak. Jika pembuatan pipe gagal, program akan menampilkan pesan kesalahan dan keluar dengan status kesalahan.
+
+```c
+if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+```
+
+>Program selanjutnya membuat proses anak dengan menggunakan fungsi fork(). Jika pembuatan proses anak gagal, program akan menampilkan pesan kesalahan dan keluar dengan status kesalahan.
+
+```c
+if (pid == 0) { 
+        close(pipefd[1]); 
+
+        int result;
+        read(pipefd[0], &result, sizeof(result));
+        close(pipefd[0]);
+
+    } 
+```
+
+>Jika proses yang berjalan adalah proses anak (pid == 0), proses tersebut akan menutup ujung tulis pipe (pipefd[1]) karena proses anak hanya akan membaca dari pipe.
+
+```c
+else {
+        close(pipefd[0]); 
+
+        char input1[MAX_LENGTH], input2[MAX_LENGTH];
+        int num1, num2, result;
+
+        printf("Masukkan dua angka (dalam kata): ");
+        scanf("%s %s", input1, input2);
+
+        convertToNumber(input1, &num1);
+        convertToNumber(input2, &num2);
+```
+
+>Jika proses yang berjalan adalah proses induk (pid != 0), proses tersebut akan menutup ujung baca pipe (pipefd[0]) karena proses induk hanya akan menulis ke pipe.
+
+```
+char input1[MAX_LENGTH], input2[MAX_LENGTH];c
+int num1, num2, result;
+printf("Masukkan dua angka (dalam kata): ");
+scanf("%s %s", input1, input2);
+```
+
+>Proses induk akan meminta pengguna untuk memasukkan dua bilangan dalam bentuk kata-kata. Input ini disimpan dalam dua variabel input1 dan input2.
+
+```
+ convertToNumber(input1, &num1);c
+        convertToNumber(input2, &num2);
+```
+
+>Selanjutnya, program akan menggunakan fungsi convertToNumber untuk mengonversi input kata-kata bilangan menjadi angka integer (num1 dan num2). Setelah itu, program akan melakukan operasi aritmatika sesuai dengan argumen yang diberikan.
+
+```
+printf("Hasil %s adalah %s.\n", operation, message);
+writeToLog(operation, input1, input2, operation, message);
+```
+
+>Selanjutnya, program akan menggunakan fungsi convertToNumber untuk mengonversi input kata-kata bilangan menjadi angka integer (num1 dan num2). Setelah itu, program akan melakukan operasi aritmatika sesuai dengan argumen yang diberikan.
+
+```
+printf("Hasil %s adalah %s.\n", operation, message);
+writeToLog(operation, input1, input2, operation, message);
+```
+
+>Setelah hasil operasi diperoleh, program akan menampilkan hasilnya ke layar dan menulis informasi operasi tersebut ke file log menggunakan fungsi writeToLog.
+
+```
+write(pipefd[1], &result, sizeof(result));
+close(pipefd[1]);
+wait(NULL);
+```
+
+>Setelah menulis hasil operasi ke pipe (pipefd[1]), proses induk akan menutup ujung tulis pipe dan kemudian menunggu proses anak selesai (wait(NULL)). Ini memastikan bahwa proses induk menunggu hingga proses anak selesai sebelum program selesai berjalan.
+
+### Dokumentasi
+
+![WhatsApp Image 2024-05-11 at 02 05 09 (1)](https://github.com/Gandhiert/Sisop-3-2024-MH-IT05/assets/142889150/4154c328-a544-45a7-81ac-97c4add8b5d9)
+>Contoh penggunaan operasi aritmetika.
+
+![WhatsApp Image 2024-05-11 at 02 05 09](https://github.com/Gandhiert/Sisop-3-2024-MH-IT05/assets/142889150/62e17f75-35f4-465a-ad14-c72faf2dcb25)
+>Contoh hasil dari histori.log.
+
+
