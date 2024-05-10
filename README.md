@@ -1,6 +1,6 @@
 <div align=center>
 
-# Laporan Pengerjaan - Praktikum Modul 2 Sistem Operasi
+# Laporan Pengerjaan - Praktikum Modul 3 Sistem Operasi
 
 </div>
 
