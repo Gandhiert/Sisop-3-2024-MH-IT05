@@ -1,120 +1,108 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
-#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <time.h>
-#include <sys/stat.h>
 
-#define SHM_SIZE 1024
-#define SHM_KEY_FILE "/Users/rrrreins/sisop/mod3-soal1/shm_key.txt" // Menambahkan definisi nama file untuk key shared memory
+#define MAX_FILENAME_LENGTH 1024
 
-void move_to_database(const char *filename, const char *filetype) {
-    // Baca key shared memory dari file
-    FILE *key_file = fopen(SHM_KEY_FILE, "r");
-    if (key_file == NULL) {
-        perror("Error opening key file");
-        return;
+void writeToLog(const char *type, const char *filename) {
+    time_t current_time;
+    struct tm *local_time;
+    char timeString[20];
+
+    current_time = time(NULL);
+    local_time = localtime(&current_time);
+    strftime(timeString, sizeof(timeString), "%d/%m/%Y %H:%M:%S", local_time);
+
+    FILE *logFile = fopen("/Users/rrrreins/sisop/mod3-so1/microservices/database/db.log", "a");
+    if (logFile == NULL) {
+        perror("fopen");
+        exit(1);
     }
-    key_t shm_key;
-    fscanf(key_file, "%x", &shm_key);
-    fclose(key_file);
-
-    // Access the shared memory segment
-    int shm_id = shmget(shm_key, SHM_SIZE, 0666);
-    if (shm_id == -1) {
-        perror("Error accessing shared memory");
-        return;
-    }
-
-    // Get information about the shared memory segment
-    struct shmid_ds shm_info;
-    if (shmctl(shm_id, IPC_STAT, &shm_info) == -1) {
-        perror("Error getting shared memory info");
-        return;
-    }
-
-    // Check if there is any data in shared memory
-    if (shm_info.shm_segsz == 0) {
-        printf("No data found in shared memory.\n");
-        return;
-    }
-
-    // Attach the shared memory segment
-    char *shm_ptr = (char *)shmat(shm_id, NULL, 0);
-    if (shm_ptr == (char *)(-1)) {
-        perror("Error attaching shared memory");
-        return;
-    }
-
-    // Create the database file
-    char db_filename[256];
-    sprintf(db_filename, "/Users/rrrreins/sisop/mod3-soal1/microservices/database/%s", filename);
-    FILE *database_file = fopen(db_filename, "w");
-    if (database_file == NULL) {
-        perror("Error creating database file");
-        shmdt(shm_ptr);
-        return;
-    }
-
-    // Write the data from shared memory to the database file
-    fprintf(database_file, "%s", shm_ptr);
-
-    // Detach shared memory
-    shmdt(shm_ptr);
-
-    // Close the database file
-    fclose(database_file);
-
-    // Log the file processing
-    FILE *log_file = fopen("/Users/rrrreins/sisop/mod3-soal1/microservices/database/db.log", "a");
-    if (log_file == NULL) {
-        perror("Error opening log file");
-        return;
-    }
-    time_t now;
-    time(&now);
-    char timestamp[20];
-    strftime(timestamp, 20, "%d/%m/%Y %H:%M:%S", localtime(&now));
-    fprintf(log_file, "[%s] [%s] [%s]\n", timestamp, filetype, filename);
-    fclose(log_file);
-}
-
-int is_valid_file(const char *filename) {
-    // Check if the file contains "trashcan" or "parkinglot"
-    if (strstr(filename, "trashcan") != NULL || strstr(filename, "parkinglot") != NULL) {
-        return 1;
-    }
-    return 0;
+    fprintf(logFile, "[%s] [%s] [%s]\n", timeString, type, filename);
+    fclose(logFile);
 }
 
 int main() {
-    DIR *dir;
-    struct dirent *ent;
+    int baseKey = 12345678; // Base key for shared memory segments
+    int shmid;
+    char *shared_memory;
 
-    if ((dir = opendir("/Users/rrrreins/sisop/mod3-soal1/new-data")) != NULL) {
-        // Iterate over files in the directory
-        while ((ent = readdir(dir)) != NULL) {
-            if (ent->d_type == DT_REG) { // Regular file
-                char filepath[1024];
-                sprintf(filepath, "/Users/rrrreins/sisop/mod3-soal1/new-data/%s", ent->d_name);
-
-                if (is_valid_file(ent->d_name)) {
-                    // Move valid file to database
-                    move_to_database(ent->d_name, strstr(ent->d_name, "trashcan") != NULL ? "Trash Can" : "Parking Lot");
-                    printf("File %s moved to database.\n", ent->d_name);
-                } else {
-                    printf("Skipped invalid file: %s\n", ent->d_name);
-                }
-            }
-        }
-        closedir(dir);
-    } else {
-        perror("Error opening directory");
-        return EXIT_FAILURE;
+    DIR *dir = opendir("/Users/rrrreins/sisop/mod3-so1/new-data");
+    if (dir == NULL) {
+        perror("opendir");
+        exit(1);
     }
 
-    return EXIT_SUCCESS;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if ((strstr(entry->d_name, "trashcan.csv") || strstr(entry->d_name, "parkinglot.csv"))) {
+            int key = baseKey; // Start with the base key
+            int shmid;
+            char *filename = entry->d_name;
+
+            // Find the corresponding shared memory segment
+            while ((shmid = shmget(key, MAX_FILENAME_LENGTH, 0666)) != -1) {
+                shared_memory = shmat(shmid, NULL, 0);
+                if (shared_memory == (char *) -1) {
+                    perror("shmat");
+                    exit(1);
+                }
+
+                if (strcmp(shared_memory, filename) == 0) {
+                    // Copy the file to the database directory
+                    char source[MAX_FILENAME_LENGTH];
+                    char destination[MAX_FILENAME_LENGTH];
+                    snprintf(source, sizeof(source), "/Users/rrrreins/sisop/mod3-so1/new-data/%s", filename);
+                    snprintf(destination, sizeof(destination), "/Users/rrrreins/sisop/mod3-so1/microservices/database/%s", filename);
+
+                    FILE *sourceFile = fopen(source, "r");
+                    if (sourceFile == NULL) {
+                        perror("fopen");
+                        exit(1);
+                    }
+
+                    FILE *destinationFile = fopen(destination, "w");
+                    if (destinationFile == NULL) {
+                        perror("fopen");
+                        exit(1);
+                    }
+
+                    char buffer[BUFSIZ];
+                    size_t bytes_read;
+                    while ((bytes_read = fread(buffer, 1, sizeof(buffer), sourceFile)) > 0) {
+                        fwrite(buffer, 1, bytes_read, destinationFile);
+                    }
+
+                    fclose(sourceFile);
+                    fclose(destinationFile);
+
+                    // Write to log
+                    const char *type = strstr(filename, "trashcan.csv") ? "Trash Can" : "Parking Lot";
+                    writeToLog(type, filename);
+
+                    // Detach shared memory
+                    shmdt(shared_memory);
+                    
+                    break; // Move to the next file
+                }
+
+                // Detach shared memory
+                shmdt(shared_memory);
+                key++; // Move to the next shared memory segment
+            }
+        }
+    }
+
+    closedir(dir);
+
+    return 0;
 }
