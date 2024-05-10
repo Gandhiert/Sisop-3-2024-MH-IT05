@@ -1,107 +1,61 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <dirent.h>
-#include <sys/stat.h>
-
-#define SHM_SIZE 1024
-#define SHM_KEY_FILE "shm_key.txt" // Nama file untuk menyimpan key shared memory
-
-int is_valid_file(const char *filename) {
-    // Check if the filename contains "trashcan" or "parkinglot"
-    if (strstr(filename, "trashcan") != NULL || strstr(filename, "parkinglot") != NULL) {
-        return 1;
-    }
-    return 0;
-}
-
-void move_to_shared_memory(const char *filename) {
-    // Open the file
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        perror("Error opening file");
-        return;
-    }
-
-    // Get the size of the file
-    fseek(file, 0L, SEEK_END);
-    long int file_size = ftell(file);
-    rewind(file);
-
-    // Generate a new unique key
-    key_t key = ftok(filename, 'R');
-    if (key == -1) {
-        perror("Error generating key");
-        fclose(file);
-        return;
-    }
-
-    // Simpan key ke dalam file
-    FILE *key_file = fopen(SHM_KEY_FILE, "w");
-    if (key_file == NULL) {
-        perror("Error opening key file");
-        fclose(file);
-        return;
-    }
-    fprintf(key_file, "%x", key);
-    fclose(key_file);
-
-    // Create or access the shared memory segment
-    int shm_id = shmget(key, SHM_SIZE, IPC_CREAT | 0666);
-    if (shm_id == -1) {
-        perror("Error creating/accessing shared memory");
-        fclose(file);
-        return;
-    }
-
-    // Attach the shared memory segment
-    char *shm_ptr = (char *)shmat(shm_id, NULL, 0);
-    if (shm_ptr == (char *)(-1)) {
-        perror("Error attaching shared memory");
-        fclose(file);
-        return;
-    }
-
-    // Write the file contents to shared memory
-    fread(shm_ptr, sizeof(char), file_size, file);
-
-    // Detach the shared memory segment
-    shmdt(shm_ptr);
-
-    // Close the file
-    fclose(file);
-}
 
 int main() {
-    DIR *dir;
-    struct dirent *ent;
-
-    if ((dir = opendir("/Users/rrrreins/sisop/mod3-soal1/new-data")) != NULL) {
-        // Iterate over files in the directory
-        while ((ent = readdir(dir)) != NULL) {
-            if (ent->d_type == DT_REG) { // Regular file
-                char filepath[1024];
-                sprintf(filepath, "/Users/rrrreins/sisop/mod3-soal1/new-data/%s", ent->d_name);
-
-                if (is_valid_file(ent->d_name)) {
-                    // Move valid file to shared memory
-                    move_to_shared_memory(filepath);
-                    printf("File %s moved to shared memory.\n", ent->d_name);
-                } else {
-                    // Invalid file, delete it
-                    remove(filepath);
-                    printf("Invalid file %s deleted.\n", ent->d_name);
-                }
-            }
-        }
-        closedir(dir);
-    } else {
-        perror("Error opening directory");
-        return EXIT_FAILURE;
+    // Opening directory
+    DIR *dir = opendir("new-data");
+    if (dir == NULL) {
+        perror("opendir");
+        exit(1);
     }
 
-    return EXIT_SUCCESS;
+    // Iterate through files in the directory
+    struct dirent *entry;
+    int shm_key = 12345678; // Shared memory key
+    while ((entry = readdir(dir)) != NULL) {
+        // Validating file extension
+        if (strstr(entry->d_name, "trashcan.csv") || strstr(entry->d_name, "parkinglot.csv")) {
+            // Creating or getting shared memory segment
+            int shmid = shmget(shm_key, 1024, IPC_CREAT | 0666);
+            if (shmid == -1) {
+                fprintf(stderr, "Failed to create or get shared memory segment for file: %s\n", entry->d_name);
+                perror("shmget");
+                exit(1);
+            }
+
+            // Attaching shared memory
+            char *shared_memory = shmat(shmid, NULL, 0);
+            if (shared_memory == (char *) -1) {
+                fprintf(stderr, "Failed to attach shared memory for file: %s\n", entry->d_name);
+                perror("shmat");
+                exit(1);
+            }
+
+            // Writing filename to shared memory
+            strcpy(shared_memory, entry->d_name);
+
+            // Detaching shared memory
+            shmdt(shared_memory);
+
+            // Incrementing the key for the next shared memory segment
+            shm_key++;
+
+            printf("File successfully moved to shared memory: %s\n", entry->d_name);
+        } else {
+            // Deleting invalid file
+            char filePath[1024];
+            snprintf(filePath, sizeof(filePath), "new-data/%s", entry->d_name);
+            remove(filePath);
+            printf("Invalid file deleted: %s\n", entry->d_name);
+        }
+    }
+
+    // Closing directory
+    closedir(dir);
+
+    return 0;
 }
