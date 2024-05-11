@@ -1430,6 +1430,10 @@ Struktur direktori file, mulai dari direktori client, server, dan csv hasil down
 
 percobaan penginputan command (disini belum ditambahkan fungsi penampilkan anime dari kategori genre dan lainnya, baru penambahan, penghapusan, penyuntingan dan tanggal).
 
+![Screenshot 2024-05-11 185108](https://github.com/Gandhiert/Sisop-3-2024-MH-IT05/assets/136203533/725171d0-2692-45ab-b1db-cfe1781483a8)
+
+Hasil dari jendela terminal koneksi server.c
+
 ## Revisi
 
 Penambahan fungsi seperti menampilkan seluruh judul:
