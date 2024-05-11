@@ -770,7 +770,747 @@ wait(NULL);
 ![WhatsApp Image 2024-05-11 at 02 05 09 (1)](https://github.com/Gandhiert/Sisop-3-2024-MH-IT05/assets/142889150/4154c328-a544-45a7-81ac-97c4add8b5d9)
 >Contoh penggunaan operasi aritmetika.
 
+
+
 ![WhatsApp Image 2024-05-11 at 02 05 09](https://github.com/Gandhiert/Sisop-3-2024-MH-IT05/assets/142889150/62e17f75-35f4-465a-ad14-c72faf2dcb25)
 >Contoh hasil dari histori.log.
 
 
+## _Soal 3_
+### Dikerjakan Oleh Gandhi Ert Julio (5027231081)
+Soal nomor 3 ini mendefinisikan serangkaian fungsi yang bertujuan untuk membuat keputusan dalam skenario balapan, seperti balapan mobil. Setiap fungsi mengevaluasi kondisi tertentu seperti jarak ke mobil berikutnya, tingkat bahan bakar, dan keausan ban.
+
+### actions.c
+
+```bash
+#include <stdio.h>
+#include <string.h>
+
+char* gap(float distance) {
+    if (distance < 3.5) {
+        return "Gogogo";
+    } else if (distance >= 3.5 && distance <= 10) {
+        return "Push";
+    } else {
+        return "Stay out of trouble";
+    }
+}
+```
+Fungsi ini mengambil jarak (dalam float) ke mobil di depan dan mengembalikan pesan tindakan berdasarkan jarak tersebut.
+
+```bash
+char* fuel(float percentage) {
+    if (percentage > 80) {
+        return "Push Push Push";
+    } else if (percentage >= 50 && percentage <= 80) {
+        return "You can go";
+    } else {
+        return "Conserve Fuel";
+    }
+}
+```
+Fungsi ini menentukan tindakan berdasarkan persentase bahan bakar yang tersisa.
+
+```bash
+
+char* tire(int wear) {
+    if (wear > 80) {
+        return "Go Push Go Push";
+    } else if (wear >= 50 && wear <= 80) {
+        return "Good Tire Wear";
+    } else if (wear >= 30 && wear < 50) {
+        return "Conserve Your Tire";
+    } else {
+        return "Box Box Box";
+    }
+}
+
+char* tireChange(char* tireType) {
+    if (strcmp(tireType, "Soft") == 0) {
+        return "Mediums Ready";
+    } else if (strcmp(tireType, "Medium") == 0) {
+        return "Box for Softs";
+    }
+    return "Tidak Ada/Diketahui";
+}
+```
+Fungsi ini menentukan tindakan berdasarkan keausan ban dan menentukan ban yang harus diganti berdasarkan tipe ban saat ini.
+
+### paddock.c
+
+```bash
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include "actions.c"
+
+#define PORT 8080
+#define MAX_BUFFER 1024
+
+void logMessage(char* source, char* command, char* info) {
+    time_t now;
+    struct tm* timeinfo;
+    char timestamp[20];
+
+    time(&now);
+    timeinfo = localtime(&now);
+    strftime(timestamp, sizeof(timestamp), "%d/%m/%y %H:%M:%S", timeinfo);
+
+    FILE* logFile = fopen("race.log", "a");
+    if (logFile == NULL) {
+        printf("Error opening log file.\n");
+        return;
+    }
+
+    fprintf(logFile, "[%s] [%s]: [%s] [%s]\n", source, timestamp, command, info);
+    fclose(logFile);
+}
+
+```
+Fungsi ini mencatat pesan dalam file log dengan waktu terkini dan penentuan header.
+ 
+```bash
+int main() {
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+    char buffer[MAX_BUFFER] = {0};
+
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, 3) < 0) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+```
+Fungsi utama untuk menjalankan server TCP yang menerima dan memproses perintah. Membuat file descriptor socket. Mengatur socket untuk menggunakan alamat dan port yang telah digunakan.
+
+ 
+ ```bash
+  while (1) {
+        if ((new_socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
+
+        if (read(new_socket, buffer, MAX_BUFFER) < 0) {
+            perror("read");
+            close(new_socket);
+            continue;
+        }
+
+        
+        char command[20], info[MAX_BUFFER];
+        sscanf(buffer, "%s %[^\n]", command, info);
+
+        logMessage("Driver", command, info);
+
+        char response[MAX_BUFFER];
+        if (strcmp(command, "Gap") == 0) {
+            float distance = atof(info);
+            strcpy(response, gap(distance));
+        } else if (strcmp(command, "Fuel") == 0) {
+            float percentage = atof(info);
+            strcpy(response, fuel(percentage));
+        } else if (strcmp(command, "Tire") == 0) {
+            int wear = atoi(info);
+            strcpy(response, tire(wear));
+        } else if (strcmp(command, "Tire Change") == 0) {
+            strcpy(response, tireChange(info));
+        } else {
+            strcpy(response, "Invalid command");
+        }
+
+        logMessage("Paddock", command, response);
+
+        send(new_socket, response, strlen(response), 0);
+        close(new_socket);
+    }
+
+    return 0;
+}
+```
+Mengurai perintah yang diterima dan informasi tambahan, serta Loop untuk menerima dan memproses perintah.
+
+### driver.c
+
+```bash
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
+#define PORT 8080
+#define MAX_BUFFER 1024
+
+// Fungsi utama yang menjalankan klien TCP
+int main(int argc, char const* argv[]) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    char buffer[MAX_BUFFER] = {0};
+
+    // Membuat socket TCP
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\n Socket creation error \n");
+        return -1;
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    // Mengonversi alamat IP dari teks ke bentuk biner
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported \n");
+        return -1;
+    }
+
+    // Menghubungkan socket ke server pada alamat yang diberikan
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed \n");
+        return -1;
+    }
+
+    // Mengecek argumen untuk memastikan format perintah yang benar
+    if (argc < 3) {
+        printf("Usage: %s -c <command> -i <info>\n", argv[0]);
+        return -1;
+    }
+
+    char command[20], info[MAX_BUFFER];
+    // Parsing argumen baris perintah untuk mendapatkan perintah dan informasi
+    for (int i = 1; i < argc; i += 2) {
+        if (strcmp(argv[i], "-c") == 0) {
+            strcpy(command, argv[i + 1]);
+        } else if (strcmp(argv[i], "-i") == 0) {
+            strcpy(info, argv[i + 1]);
+        }
+    }
+
+    char message[MAX_BUFFER];
+    // Membuat pesan untuk dikirim ke server dengan perintah dan informasi
+    snprintf(message, sizeof(message), "%.*s %.*s", (int)(sizeof(message) - 2), command, (int)(sizeof(message) - strlen(command) - 2), info);
+
+    // Mengirim pesan ke server
+    send(sock, message, strlen(message), 0);
+    printf("Command sent: %s\n", message);
+
+    // Membaca respons dari server
+    if (read(sock, buffer, MAX_BUFFER) < 0) {
+        printf("Error reading response\n");
+        return -1;
+    }
+
+    // Menampilkan respons yang diterima dari server
+    printf("Response from paddock: %s\n", buffer);
+
+    // Menutup socket
+    close(sock);
+    return 0;
+}
+
+```
+Pada baris kode ini Fungsi utama menjalan klien TCP, membuat socket, mengonversi alamat ip ke biner dan beberapa parsing argumen dan pembuatan pesan untuk ke server.
+
+![image](https://github.com/Gandhiert/BARU-NYOBA/assets/136203533/f95f44a4-654e-4562-9735-3db937eb413c)
+
+Ini dimana saat melakukan input jarak dan berupa hasil dari Command CLI
+
+![image](https://github.com/Gandhiert/BARU-NYOBA/assets/136203533/663f6ea3-b75b-4571-afe4-7841be97f350)
+
+Hasil Log dari setiap kali hasil penginputan yang ada
+
+## _Soal 4_
+### Dikerjakan Oleh Gandhi Ert Julio (5027231081)
+Soal nomor 4 ini mendefinisikan serangkaian fungsi yang bertujuan untuk membuat list anime yang bisa dimanipulasi seperti tampilan, penambahan, dan kategori dari genre, tanggal dan lainnya dari sebuah list anime.
+
+### client.c
+
+```bash
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
+#define PORT 8080
+
+int main(int argc, char const *argv[]) {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    char buffer[1024] = {0};
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\n Socket creation error \n");
+        return -1;
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported \n");
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed \n");
+        return -1;
+    }
+
+    while (1) {
+        printf("You: ");
+        fgets(buffer, 1024, stdin);  // Mengambil input dari pengguna
+        buffer[strcspn(buffer, "\n")] = 0;  // Membersihkan newline dari input
+
+        send(sock, buffer, strlen(buffer), 0);  // Mengirim input ke server
+
+        if (strcmp(buffer, "exit") == 0) {  // Memeriksa jika pengguna ingin keluar
+            printf("Exiting the client\n");
+            break;
+        }
+
+        memset(buffer, 0, sizeof(buffer));  // Mengosongkan buffer sebelum menerima data baru
+        int valread = read(sock, buffer, 1024);  // Membaca respons dari server
+        printf("Server:\n%s\n", buffer);  // Menampilkan respons dari server
+    }
+
+    close(sock);  // Menutup socket
+    return 0;
+}
+```
+
+Dari fungsi dan comment ini menjelaskan cara kerja program klien TCP interaktif yang mengirim dan menerima pesan ke dan dari server. Pengguna dapat berinteraksi dengan server dengan mengetikkan pesan dan menerima respons. 
+
+### server.c
+
+
+```bash
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <curl/curl.h>
+
+#define PORT 8080
+
+void writeLog(const char *type, const char *message) {
+    FILE *fp = fopen("change.log", "a");
+    if (fp == NULL) {
+        printf("Error opening log file\n");
+        return;
+    }
+
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    char date[20];
+    strftime(date, sizeof(date), "%d/%m/%y", t);
+
+    fprintf(fp, "[%s] [%s] %s\n", date, type, message);
+    fclose(fp);
+}
+```
+Header dan Fungsi untuk menulis log ke file dengan timestamp.
+
+```bash
+void readCSV(const char *filename, char *buffer) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        strcpy(buffer, "File not found");
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        strcat(buffer, line);
+    }
+
+    fclose(fp);
+}
+
+void addAnime(const char *filename, const char *anime) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "a");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    fprintf(fp, "%s\n", anime);
+    fclose(fp);
+
+    char message[100];
+    snprintf(message, sizeof(message), "%s ditambahkan.", anime);
+    writeLog("ADD", message);
+}
+```
+
+Fungsi untuk membaca file CSV dan menyimpan isi ke dalam buffer dan untuk untuk menambahkan entry anime baru ke file CSV.
+
+```bash
+void editAnime(const char *filename, const char *oldAnime, const char *newAnime) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+    
+    FILE *tempFp = fopen("temp.csv", "w");
+    if (tempFp == NULL) {
+        printf("Error opening temporary file\n");
+        fclose(fp);
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, oldAnime) != NULL) {
+            fprintf(tempFp, "%s\n", newAnime);
+        } else {
+            fprintf(tempFp, "%s", line);
+        }
+    }
+
+    fclose(fp);
+    fclose(tempFp);
+
+    remove(filePath);
+    rename("temp.csv", filePath);
+
+    char message[200];
+    snprintf(message, sizeof(message), "%s diubah menjadi %s.", oldAnime, newAnime);
+    writeLog("EDIT", message);
+}
+
+void deleteAnime(const char *filename, const char *anime) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+    
+    FILE *tempFp = fopen("temp.csv", "w");
+    if (tempFp == NULL) {
+        printf("Error opening temporary file\n");
+        fclose(fp);
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, anime) == NULL) {
+            fprintf(tempFp, "%s", line);
+        }
+    }
+
+    fclose(fp);
+    fclose(tempFp);
+
+    remove(filePath);
+    rename("temp.csv", filePath);
+
+    char message[100];
+    snprintf(message, sizeof(message), "%s berhasil dihapus.", anime);
+    writeLog("DEL", message);
+}
+```
+
+Lalu dibaris ini ada Fungsi untuk mengedit entry anime di file CSV dan Fungsi untuk menghapus entry anime dari file CSV.
+
+```bash
+// Callback function for writing downloaded data to a file
+size_t write_callback(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    size_t written = fwrite(ptr, size, nmemb, stream);
+    return written;
+}
+
+// Fungsi untuk mendownload file menggunakan wget
+void downloadFileUsingWget(const char *url, const char *filename) {
+    char command[512];
+    snprintf(command, sizeof(command), "wget -q -O '%s' '%s'", filename, url);
+
+    int result = system(command);
+    if (result != 0) {
+        fprintf(stderr, "Failed to download file using wget: %s\n", url);
+        writeLog("ERROR", "Failed to download file using wget");
+    } else {
+        writeLog("INFO", "File downloaded successfully using wget");
+    }
+}
+```
+
+Di baris ini ada fungsi callback untuk menulis data yang di download menjadi file dan mendownload menggunakan wget.
+
+```bash
+int main(int argc, char const *argv[]) {
+    int server_fd, new_socket;
+    struct sockaddr_in address;
+    int opt = 1;
+    int addrlen = sizeof(address);
+    char buffer[1024] = {0};
+
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("socket failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+        perror("bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, 3) < 0) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    const char *url = "https://drive.google.com/uc?id=10p_kzuOgaFY3WT6FVPJIXFbkej2s9f50&export=download";
+    const char *filename = "../myanimelist.csv";
+    downloadFileUsingWget(url, filename);
+```
+
+Lalu di fungsi utama bisa menjalankan server TCP, membuat socket file descriptor, penyambungan socket ke alamat dan port serta mendapatkan koneksi dan download link Google drive.
+
+```bash
+   while (1) {
+        printf("Waiting for incoming connections...\n");
+
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t *)&addrlen)) < 0) {
+            perror("accept");
+            exit(EXIT_FAILURE);
+        }
+
+        while (1) {
+            memset(buffer, 0, sizeof(buffer));
+            int valread = read(new_socket, buffer, 1024);
+            if (valread <= 0) {
+                break;
+            }
+
+            printf("Received: %s\n", buffer);
+
+            // Handle various commands
+            if (strcmp(buffer, "genre Slice of Life") == 0) {
+                memset(buffer, 0, sizeof(buffer));
+                readCSV("../myanimelist.csv", buffer);
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strncmp(buffer, "genre", 5) == 0) {
+                char genre[50];
+                sscanf(buffer, "genre %[^\n]", genre);
+
+                memset(buffer, 0, sizeof(buffer));
+                readCSV("../myanimelist.csv", buffer);
+                char *token = strtok(buffer, "\n");
+                while (token != NULL) {
+                    if (strstr(token, genre) != NULL) {
+                        strcat(buffer, token);
+                        strcat(buffer, "\n");
+                    }
+                    token = strtok(NULL, "\n");
+                }
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strcmp(buffer, "hari Rabu") == 0) {
+                memset(buffer, 0, sizeof(buffer));
+                readCSV("../myanimelist.csv", buffer);
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strncmp(buffer, "hari", 4) == 0) {
+                char hari[20];
+                sscanf(buffer, "hari %[^\n]", hari);
+
+                memset(buffer, 0, sizeof(buffer));
+                readCSV("../myanimelist.csv", buffer);
+                char *token = strtok(buffer, "\n");
+                while (token != NULL) {
+                    if (strncmp(token, hari, strlen(hari)) == 0) {
+                        strcat(buffer, token);
+                        strcat(buffer, "\n");
+                    }
+                    token = strtok(NULL, "\n");
+                }
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strcmp(buffer, "status ongoing") == 0) {
+                memset(buffer, 0, sizeof(buffer));
+                readCSV("../myanimelist.csv", buffer);
+                char *token = strtok(buffer, "\n");
+                while (token != NULL) {
+                    if (strstr(token, "ongoing") != NULL) {
+                        strcat(buffer, token);
+                        strcat(buffer, "\n");
+                    }
+                    token = strtok(NULL, "\n");
+                }
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strncmp(buffer, "add", 3) == 0) {
+                char anime[100];
+                sscanf(buffer, "add %[^\n]", anime);
+                addAnime("../myanimelist.csv", anime);
+                strcpy(buffer, "anime berhasil ditambahkan.");
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strncmp(buffer, "edit", 4) == 0) {
+                char oldAnime[100], newAnime[100];
+                sscanf(buffer, "edit %[^,],%[^\n]", oldAnime, newAnime);
+                editAnime("../myanimelist.csv", oldAnime, newAnime);
+                strcpy(buffer, "anime berhasil diedit");
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else if (strncmp(buffer, "delete", 6) == 0) {
+                char anime[100];
+                sscanf(buffer, "delete %[^\n]", anime);
+                deleteAnime("../myanimelist.csv", anime);
+                strcpy(buffer, "anime berhasil dihapus");
+                send(new_socket, buffer, strlen(buffer), 0);
+            } else {
+                strcpy(buffer, "Invalid Command");
+                send(new_socket, buffer, strlen(buffer), 0);
+            }
+        }
+
+        close(new_socket);
+    }
+
+    return 0;
+}
+```
+
+Dan dalam dungsi while loop ini ada penghandle-an command variasi, mulai dari penambahan anime, menamipilkan anime dari genre tertentu, edit animem, dan lainnya yang tertera.
+
+![image](https://github.com/Gandhiert/BARU-NYOBA/assets/136203533/5b0e0ad6-8b6b-42bf-a30e-9b8c765cd8b0)
+
+tampilan dari server.c untuk menunggu koneksi soket dari client.c
+
+![image](https://github.com/Gandhiert/BARU-NYOBA/assets/136203533/98d7146e-3df9-4644-9f4d-d6b3500b6adb)
+
+Struktur direktori file, mulai dari direktori client, server, dan csv hasil download.
+
+![image](https://github.com/Gandhiert/BARU-NYOBA/assets/136203533/926b572f-04c8-4c96-95c7-71196b296610)
+
+percobaan penginputan command (disini belum ditambahkan fungsi penampilkan anime dari kategori genre dan lainnya, baru penambahan, penghapusan, penyuntingan dan tanggal).
+
+## Revisi
+
+Penambahan fungsi seperti menampilkan seluruh judul:
+```bash
+void displayAllTitles(const char *filename) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        char *token = strtok(line, ",");
+        if (token != NULL) {
+            printf("%s\n", token);
+        }
+    }
+
+    fclose(fp);
+}
+```
+
+Fungsi untuk menampilkan judul berdasarkan genre:
+```bash
+void displayTitlesByGenre(const char *filename, const char *genre) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        char *token = strtok(line, ",");
+        if (token != NULL) {
+            char *title = token;
+            token = strtok(NULL, ",");
+            if (token != NULL && strcmp(token, genre) == 0) {
+                printf("%s\n", title);
+            }
+        }
+    }
+
+    fclose(fp);
+}
+```
+
+dan Fungsi untuk menampilkan judul berdasarkan status:
+```bash
+void displayTitlesByStatus(const char *filename, const char *status) {
+    char filePath[100];
+    snprintf(filePath, sizeof(filePath), "../%s", filename);
+    
+    FILE *fp = fopen(filePath, "r");
+    if (fp == NULL) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    char line[100];
+    while (fgets(line, sizeof(line), fp)) {
+        char *token = strtok(line, ",");
+        if (token != NULL) {
+            char *title = token;
+            token = strtok(NULL, ",");
+            token = strtok(NULL, ",");
+            if (token != NULL && strcmp(token, status) == 0) {
+                printf("%s\n", title);
+            }
+        }
+    }
+
+    fclose(fp);
+}
+```
+
+Setelah menambahkan fungsi-fungsi di atas, dapat memanggil fungsi-fungsi tersebut sesuai kebutuhan.
